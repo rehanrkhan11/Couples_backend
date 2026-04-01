@@ -1,7 +1,7 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import { body, validationResult } from 'express-validator';
-import { nanoid } from 'nanoid'; // tiny random string for invite codes
+import { nanoid } from 'nanoid';
 import User from '../models/User.js';
 import Couple from '../models/Couple.js';
 import { protect } from '../middleware/auth.js';
@@ -35,7 +35,6 @@ router.post(
       if (await User.findOne({ email }))
         return res.status(400).json({ message: 'Email already in use' });
 
-      // Generate a unique 8-char invite code for pairing
       const inviteCode = nanoid(8).toUpperCase();
       const user = await User.create({ name, email, password, inviteCode });
 
@@ -88,8 +87,6 @@ router.get('/me', protect, async (req, res) => {
 });
 
 // ─── POST /api/auth/pair ──────────────────────────────────────
-// Body: { inviteCode: "ABC12345" }
-// The logged-in user pairs with the owner of the given invite code.
 router.post('/pair', protect, async (req, res) => {
   try {
     const { inviteCode } = req.body;
@@ -114,24 +111,20 @@ router.post('/pair', protect, async (req, res) => {
     await me.save();
     await partner.save();
 
-  /*  res.json({ coupleId: couple._id, message: 'Paired successfully! 💑' });
+    // ✅ Issue a fresh token that includes the new coupleId
+    const newToken = signToken(me);
+
+    res.json({
+      coupleId: couple._id,
+      message: 'Paired successfully! 💑',
+      token: newToken,
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
-});*/
-
-    // Issue a fresh token that includes the new coupleId
-me.coupleId = couple._id; // already set above, just making sure
-const newToken = signToken(me);
-
-res.json({ 
-  coupleId: couple._id, 
-  message: 'Paired successfully! 💑',
-  token: newToken  // ← send new token to frontend
 });
 
 // ─── POST /api/auth/avatar ────────────────────────────────────
-// TODO (YOU): Call this with multipart/form-data, field name "avatar"
 router.post('/avatar', protect, uploadImage.single('avatar'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
