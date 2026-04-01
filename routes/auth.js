@@ -114,10 +114,20 @@ router.post('/pair', protect, async (req, res) => {
     await me.save();
     await partner.save();
 
-    res.json({ coupleId: couple._id, message: 'Paired successfully! 💑' });
+  /*  res.json({ coupleId: couple._id, message: 'Paired successfully! 💑' });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
+});*/
+
+    // Issue a fresh token that includes the new coupleId
+me.coupleId = couple._id; // already set above, just making sure
+const newToken = signToken(me);
+
+res.json({ 
+  coupleId: couple._id, 
+  message: 'Paired successfully! 💑',
+  token: newToken  // ← send new token to frontend
 });
 
 // ─── POST /api/auth/avatar ────────────────────────────────────
