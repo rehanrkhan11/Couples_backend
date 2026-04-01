@@ -16,16 +16,35 @@ dotenv.config();
 const app = express();
 const httpServer = createServer(app);
 
-// Socket.io for real-time whisper messaging
+// ─── CORS origin checker ──────────────────────────────────────
+const isAllowedOrigin = (origin) => {
+  if (!origin) return true; // allow server-to-server / curl
+  if (origin === process.env.CLIENT_URL) return true;
+  if (origin.endsWith('.vercel.app')) return true;
+  if (origin === 'http://localhost:5173') return true;
+  return false;
+};
+
+// ─── Socket.io ───────────────────────────────────────────────
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    origin: (origin, callback) => {
+      if (isAllowedOrigin(origin)) callback(null, true);
+      else callback(new Error('Not allowed by CORS'));
+    },
     methods: ['GET', 'POST'],
+    credentials: true,
   },
 });
 
 // ─── Middleware ───────────────────────────────────────────────
-app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173' }));
+app.use(cors({
+  origin: (origin, callback) => {
+    if (isAllowedOrigin(origin)) callback(null, true);
+    else callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+}));
 app.use(express.json());
 
 // Make io available in routes via req.io
@@ -42,19 +61,16 @@ app.use('/api/soundtracks', soundtrackRoutes);
 app.use('/api/dynamics', dynamicRoutes);
 
 // ─── Socket.io — Real-time Whisper Chat ──────────────────────
-// Connected users: { userId: socketId }
 const onlineUsers = new Map();
 
 io.on('connection', (socket) => {
   console.log('Socket connected:', socket.id);
 
-  // User registers with their userId so we can route messages
   socket.on('register', (userId) => {
     onlineUsers.set(userId, socket.id);
     console.log(`User ${userId} registered with socket ${socket.id}`);
   });
 
-  // Send a whisper to a specific partner
   socket.on('sendWhisper', ({ toUserId, message }) => {
     const partnerSocketId = onlineUsers.get(toUserId);
     if (partnerSocketId) {
@@ -63,7 +79,6 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    // Clean up the disconnected user
     for (const [userId, sId] of onlineUsers.entries()) {
       if (sId === socket.id) {
         onlineUsers.delete(userId);
@@ -75,7 +90,6 @@ io.on('connection', (socket) => {
 });
 
 // ─── MongoDB ─────────────────────────────────────────────────
-// TODO (YOU): Make sure your MONGODB_URI is set in .env
 mongoose
   .connect(process.env.MONGODB_URI)
   .then(() => {
