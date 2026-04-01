@@ -13,7 +13,6 @@ const requireCouple = (req, res, next) => {
 };
 
 // ─── GET /api/memories ───────────────────────────────────────
-// Returns all non-deleted memories for the couple, newest first
 router.get('/', protect, requireCouple, async (req, res) => {
   try {
     const memories = await Memory.find({ coupleId: req.user.coupleId, isDeleted: false })
@@ -21,14 +20,21 @@ router.get('/', protect, requireCouple, async (req, res) => {
       .populate('createdBy', 'name avatar');
     res.json(memories);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('GET /memories error:', err);
+    res.status(500).json({ message: err.message || String(err) });
   }
 });
 
 // ─── POST /api/memories ──────────────────────────────────────
-// For photo memories: send multipart/form-data with field name "image"
-// TODO (YOU): On the frontend, use FormData and append the image file under key "image"
-router.post('/', protect, requireCouple, uploadImage.single('image'), async (req, res) => {
+router.post('/', protect, requireCouple, (req, res, next) => {
+  uploadImage.single('image')(req, res, (err) => {
+    if (err) {
+      console.error('Multer/Cloudinary upload error:', err);
+      return res.status(500).json({ message: err.message || String(err) });
+    }
+    next();
+  });
+}, async (req, res) => {
   try {
     const { type, title, date, content, note, size } = req.body;
 
@@ -43,11 +49,10 @@ router.post('/', protect, requireCouple, uploadImage.single('image'), async (req
       size: size || 'medium',
     };
 
-    // Attach Cloudinary result if an image was uploaded
     if (req.file) {
       memoryData.image = {
-        url: req.file.path,         // Cloudinary secure URL
-        publicId: req.file.filename, // Cloudinary public_id
+        url: req.file.path,
+        publicId: req.file.filename,
       };
     }
 
@@ -55,13 +60,21 @@ router.post('/', protect, requireCouple, uploadImage.single('image'), async (req
     await memory.populate('createdBy', 'name avatar');
     res.status(201).json(memory);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('POST /memories error:', err);
+    res.status(500).json({ message: err.message || String(err) });
   }
 });
 
 // ─── PATCH /api/memories/:id ─────────────────────────────────
-// Update title, note, content or size — image replacement also supported
-router.patch('/:id', protect, requireCouple, uploadImage.single('image'), async (req, res) => {
+router.patch('/:id', protect, requireCouple, (req, res, next) => {
+  uploadImage.single('image')(req, res, (err) => {
+    if (err) {
+      console.error('Multer/Cloudinary upload error:', err);
+      return res.status(500).json({ message: err.message || String(err) });
+    }
+    next();
+  });
+}, async (req, res) => {
   try {
     const memory = await Memory.findOne({ _id: req.params.id, coupleId: req.user.coupleId });
     if (!memory) return res.status(404).json({ message: 'Memory not found' });
@@ -74,7 +87,6 @@ router.patch('/:id', protect, requireCouple, uploadImage.single('image'), async 
     if (date !== undefined) memory.date = new Date(date);
 
     if (req.file) {
-      // Delete old Cloudinary image if it exists
       if (memory.image?.publicId) {
         await cloudinary.uploader.destroy(memory.image.publicId);
       }
@@ -85,7 +97,8 @@ router.patch('/:id', protect, requireCouple, uploadImage.single('image'), async 
     await memory.populate('createdBy', 'name avatar');
     res.json(memory);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('PATCH /memories error:', err);
+    res.status(500).json({ message: err.message || String(err) });
   }
 });
 
@@ -95,7 +108,6 @@ router.delete('/:id', protect, requireCouple, async (req, res) => {
     const memory = await Memory.findOne({ _id: req.params.id, coupleId: req.user.coupleId });
     if (!memory) return res.status(404).json({ message: 'Memory not found' });
 
-    // Remove from Cloudinary
     if (memory.image?.publicId) {
       await cloudinary.uploader.destroy(memory.image.publicId);
     }
@@ -104,7 +116,8 @@ router.delete('/:id', protect, requireCouple, async (req, res) => {
     await memory.save();
     res.json({ message: 'Memory deleted' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('DELETE /memories error:', err);
+    res.status(500).json({ message: err.message || String(err) });
   }
 });
 
